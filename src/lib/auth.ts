@@ -26,11 +26,11 @@ export function verifyCredentials(username: string, password: string): boolean {
   return username === envUsername && password === envPassword;
 }
 
-export async function createToken(username: string): Promise<string> {
+export async function createToken(username: string, expiresIn: string = '24h'): Promise<string> {
   const token = await new SignJWT({ username })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime(expiresIn)
     .sign(JWT_SECRET);
 
   return token;

@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     // Parse multipart form data
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
+    const parentId = formData.get('parentId') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -56,10 +57,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for duplicate by filename + size
+    // Check for duplicate by filename + size + parentId
     const existingByNameSize = await File.findOne({
       originalName: file.name,
       size: file.size,
+      parentId: parentId || null,
     });
     if (existingByNameSize) {
       return NextResponse.json(
@@ -90,6 +92,7 @@ export async function POST(request: NextRequest) {
       storageKey,
       checksum,
       uploadedBy: auth.username,
+      parentId: parentId || null,
     });
 
     await fileDoc.save();

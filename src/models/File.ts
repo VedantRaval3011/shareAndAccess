@@ -9,6 +9,9 @@ export interface IFile extends Document {
   checksum: string;
   uploadedAt: Date;
   uploadedBy?: string;
+  parentId?: string | null;
+  isFolder: boolean;
+  passwordHash?: string;
 }
 
 const FileSchema = new Schema<IFile>(
@@ -48,14 +51,27 @@ const FileSchema = new Schema<IFile>(
       type: String,
       default: null,
     },
+    parentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'File',
+      default: null,
+      index: true,
+    },
+    isFolder: {
+      type: Boolean,
+      default: false,
+    },
+    passwordHash: {
+      type: String,
+    },
   },
   {
     timestamps: false,
   }
 );
 
-// Compound index for duplicate detection by filename + size
-FileSchema.index({ originalName: 1, size: 1 });
+// Compound index for duplicate detection by filename + size + parentId
+FileSchema.index({ originalName: 1, size: 1, parentId: 1 });
 
 // Prevent model recompilation in development
 const File: Model<IFile> =

@@ -3,6 +3,8 @@ import connectToDatabase from '@/lib/mongodb';
 import File from '@/models/File';
 import { getAuthFromRequest } from '@/lib/auth';
 
+import { verifyPassword } from '@/lib/encryption';
+
 export async function GET(request: NextRequest) {
   try {
     // Verify authentication
@@ -11,11 +13,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const parentId = searchParams.get('parentId') || null;
+    const password = request.headers.get('x-folder-password');
+
     await connectToDatabase();
 
-    const files = await File.find({})
-      .sort({ uploadedAt: -1 })
-      .select('_id filename originalName mimeType size uploadedAt uploadedBy')
+    // Verify folder access if parentId is provided
+    if (parentId) {
+      const parentFolder = await File.findById(parentId);
+      
+      if (!parentFolder) {
+        return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+      }
+
+      // Check if folder is protected
+      if (parentFolder.passwordHash) {
+        // If password provided, verify it
+        if (password) {
+          const isValid = verifyPassword(password, parentFolder.passwordHash);
+          if (!isValid) {
+             return NextResponse.json({ error: 'Invalid password' }, { status: 403 });
+          }
+        } else {
+           // If no password provided, return 403 (Forbidden)
+           return NextResponse.json({ error: 'Password required' }, { status: 403 });
+        }
+      }
+    }
+
+    const files = await File.find({ parentId })
+      .sort({ isFolder: -1, uploadedAt: -1 }) // Folders first
+      .select('_id filename originalName mimeType size uploadedAt uploadedBy isFolder passwordHash')
       .lean();
 
     return NextResponse.json({
@@ -28,6 +57,8 @@ export async function GET(request: NextRequest) {
         size: file.size,
         uploadedAt: file.uploadedAt,
         uploadedBy: file.uploadedBy,
+        isFolder: file.isFolder || false,
+        isProtected: !!file.passwordHash
       })),
     });
   } catch (error) {
