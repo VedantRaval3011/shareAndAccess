@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     const files = await File.find({ parentId })
       .sort({ isFolder: -1, uploadedAt: -1 }) // Folders first
-      .select('_id filename originalName mimeType size uploadedAt uploadedBy isFolder passwordHash')
+      .select('_id filename originalName mimeType size uploadedAt uploadedBy isFolder passwordHash emoji')
       .lean();
 
     return NextResponse.json({
@@ -58,7 +58,8 @@ export async function GET(request: NextRequest) {
         uploadedAt: file.uploadedAt,
         uploadedBy: file.uploadedBy,
         isFolder: file.isFolder || false,
-        isProtected: !!file.passwordHash
+        isProtected: !!file.passwordHash,
+        emoji: file.emoji || null,
       })),
     });
   } catch (error) {

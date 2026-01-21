@@ -976,6 +976,25 @@ html, body {
 }
 
 /* ========== RESPONSIVE ========== */
+/* ========== RESPONSIVE ========== */
+/* Tablet */
+@media (max-width: 1024px) {
+  .main-content {
+    padding: 24px;
+  }
+  
+  .files-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+  }
+
+  .files-header {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+}
+
+/* Mobile Landscape / Tablet Portrait */
 @media (max-width: 768px) {
   .header {
     padding: 12px 16px;
@@ -984,75 +1003,211 @@ html, body {
   .header h1 {
     display: none;
   }
+  
+  .header-actions {
+    gap: 8px;
+  }
+  
+  .new-folder-btn span,
+  .logout-button span {
+    display: none;
+  }
+  
+  .new-folder-btn,
+  .logout-button {
+    padding: 8px;
+  }
 
   .main-content {
-    padding: 16px;
+    padding: 16px; 
+    width: 100%;
+  }
+
+  .breadcrumbs {
+    margin-bottom: 20px;
+    padding: 8px 12px;
+    white-space: nowrap;
   }
 
   .upload-zone {
-    padding: 32px 16px;
+    padding: 24px 16px;
+    margin-bottom: 20px;
+  }
+  
+  .upload-icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 12px;
+  }
+  
+  .upload-icon svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .files-section {
+    border-radius: var(--radius-md);
   }
 
   .files-header {
     flex-direction: column;
-    gap: 16px;
     align-items: flex-start;
+    padding: 16px;
+    gap: 16px;
+  }
+  
+  .files-actions {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .selection-toggle {
+    display: flex;
+    align-items: center;
+  }
+
+  .sort-dropdown, .view-toggle {
+    flex: 1;
+  }
+  
+  .sort-dropdown button {
+    width: 100%;
+    justify-content: center;
   }
 
   .files-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    padding: 16px;
+    /* Ensure 2 columns even if content is wide */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px;
     gap: 12px;
   }
 
   .file-card {
-    padding: 16px 12px;
+    padding: 12px 8px;
+    /* Prevent card from expanding due to content */
+    width: 100%;
+    overflow: hidden;
   }
 
   .file-card-icon {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
+    margin-top: 10px;
+    margin-bottom: 10px;
   }
 
   .file-type-icon {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
+  }
+  
+  .file-card-name {
+    font-size: 12px;
+    /* Force truncation */
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    padding: 0 4px;
   }
 
+  /* Table View on Mobile */
   .files-table th,
   .files-table td {
-    padding: 12px 16px;
+    padding: 12px;
   }
-
+  
+  /* Hide less important columns */
+  .files-table th:nth-child(2), /* Type */
+  .files-table td:nth-child(2),
+  .files-table th:nth-child(3), /* Size */
+  .files-table td:nth-child(3),
+  .files-table th:nth-child(4), /* Uploaded */
+  .files-table td:nth-child(4) {
+    display: none;
+  }
+  
+  /* Adjust remaining columns */
+  .files-table th:nth-child(1) { width: auto; }
+  .files-table th:nth-child(5) { width: 40px; }
+  
   .file-name-text {
-    max-width: 150px;
+    max-width: 160px;
+    font-size: 14px;
   }
-
-  .file-type,
-  .file-date {
+  
+  .action-buttons {
+    justify-content: flex-end;
+  }
+  
+  .download-button span,
+  .delete-button span {
     display: none;
   }
-
-  .download-button span {
-    display: none;
+  
+  .download-button,
+  .delete-button {
+    padding: 8px;
+  }
+  
+  /* Modals */
+  .modal {
+    width: 90%;
+    max-width: 100%;
+    margin: 0 16px;
   }
 }
 
+/* Mobile Portrait */
 @media (max-width: 480px) {
   .login-card {
     padding: 24px;
-  }
-
-  .logout-button span {
-    display: none;
+    margin: 16px;
   }
 
   .files-grid {
-    grid-template-columns: repeat(2, 1fr);
+    /* Strict 2 column layout */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
   }
-
+  
+  .file-card {
+    padding: 12px 8px;
+    min-height: 140px;
+  }
+  
+  .files-actions {
+    gap: 10px;
+  }
+  
   .action-button span {
     display: none;
+  }
+  
+  .file-name-text {
+    max-width: 120px;
+  }
+  
+  .modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  
+  .cancel-btn, .create-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Fix for very small screens */
+@media (max-width: 350px) {
+  .files-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1070,6 +1225,42 @@ html, body {
 .lock-badge svg {
   width: 14px;
   height: 14px;
+}
+
+/* File Selection Checkbox */
+.file-selection-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  padding: 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.file-selection-checkbox input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-card);
+  accent-color: var(--accent-primary);
+}
+
+/* Always show on mobile/touch */
+@media (hover: none) {
+  .file-selection-checkbox {
+    opacity: 1; 
+  }
+}
+
+.file-card:hover .file-selection-checkbox,
+.file-selection-checkbox:has(input:checked) {
+  opacity: 1;
 }
 
 /* Folder & Breadcrumbs Styles */
@@ -1198,6 +1389,8 @@ html, body {
 }
 
 .modal .close-btn {
+  position: static;
+  transform: none;
   background: none;
   border: none;
   font-size: 1.5rem;

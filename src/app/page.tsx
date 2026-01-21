@@ -14,6 +14,7 @@ interface FileItem {
   isFolder: boolean;
   parentId?: string;
   isProtected?: boolean;
+  emoji?: string | null;
 }
 
 type SortField = 'name' | 'type' | 'size' | 'uploadedAt';
@@ -38,7 +39,14 @@ function formatDate(dateString: string): string {
   });
 }
 
-function getFileIcon(mimeType: string, isFolder: boolean = false): React.ReactNode {
+function getFileIcon(mimeType: string, isFolder: boolean = false, emoji?: string | null): React.ReactNode {
+  if (isFolder && emoji) {
+    return (
+      <div className="file-type-icon emoji" style={{ fontSize: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
+        {emoji}
+      </div>
+    );
+  }
   if (isFolder) {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="file-type-icon folder">
@@ -166,6 +174,7 @@ export default function HomePage() {
   const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([]);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderEmoji, setNewFolderEmoji] = useState('');
   const [newFolderPassword, setNewFolderPassword] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   
@@ -179,6 +188,26 @@ export default function HomePage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{id: string, name: string, isFolder: boolean} | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Edit Folder State
+  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
+  const [editFolderId, setEditFolderId] = useState<string | null>(null);
+  const [editFolderName, setEditFolderName] = useState('');
+  const [editFolderEmoji, setEditFolderEmoji] = useState('');
+  const [editFolderPassword, setEditFolderPassword] = useState('');
+  const [editingFolder, setEditingFolder] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
+
+  // Bulk Selection State
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+
+  // OTP State
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -246,7 +275,8 @@ export default function HomePage() {
         body: JSON.stringify({
           name: newFolderName.trim(),
           parentId: currentFolderId,
-          password: newFolderPassword.trim() || undefined
+          password: newFolderPassword.trim() || undefined,
+          emoji: newFolderEmoji.trim() || undefined,
         }),
       });
 
@@ -257,6 +287,7 @@ export default function HomePage() {
       }
 
       setNewFolderName('');
+      setNewFolderEmoji('');
       setNewFolderPassword('');
       setShowFolderModal(false);
       fetchFiles();
@@ -276,6 +307,29 @@ export default function HomePage() {
     const newPasswords = { ...folderPasswords };
     newPasswords[targetProtectedFolder.id] = passwordInput;
     setFolderPasswords(newPasswords);
+    
+    // Check if we are editing
+    if (editFolderId === targetProtectedFolder.id) {
+      try {
+        const response = await fetch(`/api/files?parentId=${targetProtectedFolder.id}`, {
+          headers: {
+            'x-folder-password': passwordInput
+          }
+        });
+        
+        if (response.ok) {
+          setShowPasswordModal(false);
+          setPasswordInput('');
+          setTargetProtectedFolder(null);
+          setShowEditFolderModal(true);
+        } else {
+          setError('Incorrect password');
+        }
+      } catch (err) {
+        setError('Failed to verify password');
+      }
+      return;
+    }
     
     // Close modal and attempt navigation
     const folder = targetProtectedFolder; // capture ref
@@ -317,41 +371,91 @@ export default function HomePage() {
     }
   };
 
-  const handleUpload = async (file: File) => {
+  const handleUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+
     setError('');
     setSuccess('');
     setUploading(true);
     setUploadProgress(0);
 
+    let completed = 0;
+    const totalFiles = files.length;
+    let hasError = false;
+
+    // Helper to upload single file
+    const uploadSingle = async (file: File) => {
+       try {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (currentFolderId) {
+          formData.append('parentId', currentFolderId);
+        }
+
+        const response = await fetch('/api/files/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.status === 413) {
+          throw new Error(`File "${file.name}" is too large (Server limit exceeded)`);
+        }
+
+        let data;
+        try {
+          data = await response.json();
+        } catch (e) {
+          if (!response.ok) {
+             throw new Error(`Upload failed for "${file.name}": ${response.status} ${response.statusText}`);
+          }
+          data = {}; 
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || data.message || `Upload failed for "${file.name}"`);
+        }
+       } catch (err) {
+         console.error(err);
+         hasError = true;
+         throw err;
+       }
+    };
+
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (currentFolderId) {
-        formData.append('parentId', currentFolderId);
-      }
-
+      // Simulate progress for UX
       const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 10, 90));
-      }, 200);
+        setUploadProgress((prev) => {
+           if (prev >= 95) return prev;
+           return prev + 5;
+        });
+      }, 500);
 
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
+      // Upload sequentially to avoid overwhelming server/network for huge lists
+      // or use Promise.all for parallel. Let's do sequential for reliability with progress updates.
+      // Actually Promise.allSettled is better to not fail all if one fails.
+      
+      const results = await Promise.allSettled(files.map(uploadSingle));
+      
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      const data = await response.json();
+      const failures = results.filter(r => r.status === 'rejected');
+      const successful = results.filter(r => r.status === 'fulfilled');
 
-      if (!response.ok) {
-        throw new Error(data.error || data.message || 'Upload failed');
+      if (failures.length > 0) {
+        const errors = failures.map((f: any) => f.reason.message).join(' | ');
+        setError(`Failed to upload ${failures.length} file(s): ${errors.substring(0, 100)}...`);
+        if (successful.length > 0) {
+           // Partially successful - show success too? maybe just refresh
+           setSuccess(`Uploaded ${successful.length} file(s) successfully, but some failed.`);
+        }
+      } else {
+        setSuccess(`Successfully uploaded ${files.length} file(s)!`);
       }
 
-      setSuccess(`File "${file.name}" uploaded successfully!`);
       fetchFiles();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      setError(err instanceof Error ? err.message : 'Batch upload failed');
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -359,8 +463,9 @@ export default function HomePage() {
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleUpload(file);
+    if (e.target.files && e.target.files.length > 0) {
+       handleUpload(Array.from(e.target.files));
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -378,8 +483,151 @@ export default function HomePage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleUpload(file);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleUpload(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleEditClick = (file: FileItem) => {
+    if (!file.isFolder) return;
+
+    setEditFolderId(file.id);
+    setEditFolderName(file.name);
+    setEditFolderEmoji(file.emoji || '');
+    setEditFolderPassword('');
+    setRecoveryToken(null);
+    
+    if (file.isProtected) {
+      if (folderPasswords[file.id]) {
+        setShowEditFolderModal(true);
+      } else {
+        setTargetProtectedFolder({ id: file.id, name: file.name });
+        setShowPasswordModal(true);
+      }
+    } else {
+      setShowEditFolderModal(true);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFolderId) return;
+
+    setEditingFolder(true);
+    setError('');
+
+    try {
+      const body: {
+        name: string;
+        emoji: string;
+        password: string;
+        recoveryToken?: string;
+        currentPassword?: string;
+      } = {
+        name: editFolderName,
+        emoji: editFolderEmoji,
+        password: editFolderPassword
+      };
+
+      if (recoveryToken) {
+        body.recoveryToken = recoveryToken;
+      } else if (folderPasswords[editFolderId]) {
+        body.currentPassword = folderPasswords[editFolderId];
+      }
+
+      const response = await fetch(`/api/folders/${editFolderId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(recoveryToken ? {} : { 'x-folder-password': folderPasswords[editFolderId] || '' })
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update folder');
+      }
+      
+      if (editFolderPassword) {
+         setFolderPasswords(prev => ({...prev, [editFolderId]: editFolderPassword}));
+      }
+
+      setSuccess(`Folder "${data.folder.name}" updated!`);
+      setShowEditFolderModal(false);
+      setEditFolderId(null);
+      setRecoveryToken(null);
+      fetchFiles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update folder');
+    } finally {
+      setEditingFolder(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!targetProtectedFolder) return;
+    setSendingOtp(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/auth/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId: targetProtectedFolder.id })
+      });
+      
+      if (!response.ok) throw new Error('Failed to send OTP');
+      
+      setShowPasswordModal(false);
+      setShowOtpModal(true);
+    } catch (err) {
+      setError('Failed to send OTP. Please try again.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetProtectedFolder) return;
+    
+    setVerifyingOtp(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          folderId: targetProtectedFolder.id,
+          otp: otpInput
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data.error || 'Invalid OTP');
+      
+      setRecoveryToken(data.recoveryToken);
+      setShowOtpModal(false);
+      setOtpInput('');
+      
+      const file = files.find(f => f.id === targetProtectedFolder.id);
+      if (file) {
+          setEditFolderId(file.id);
+          setEditFolderName(file.name);
+          setEditFolderEmoji(file.emoji || '');
+          setEditFolderPassword(''); 
+          setShowEditFolderModal(true);
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification failed');
+    } finally {
+      setVerifyingOtp(false);
+    }
   };
 
   const handleItemClick = (file: FileItem) => {
@@ -456,11 +704,134 @@ export default function HomePage() {
     }
   };
 
+  // Restore view mode toggle
   const toggleViewMode = (mode: ViewMode) => {
     setViewMode(mode);
     localStorage.setItem('fileViewMode', mode);
   };
 
+  const handleSelectFile = (fileId: string, multiSelect: boolean, rangeSelect: boolean) => {
+    const newSelected = new Set(multiSelect ? selectedFiles : []);
+    
+    if (rangeSelect && lastSelectedId) {
+       const start = sortedFiles.findIndex(f => f.id === lastSelectedId);
+       const end = sortedFiles.findIndex(f => f.id === fileId);
+       const low = Math.min(start, end);
+       const high = Math.max(start, end);
+       
+       for (let i = low; i <= high; i++) {
+         if (sortedFiles[i]) newSelected.add(sortedFiles[i].id);
+       }
+    } else {
+       if (newSelected.has(fileId)) {
+         newSelected.delete(fileId);
+       } else {
+         newSelected.add(fileId);
+       }
+    }
+    
+    setSelectedFiles(newSelected);
+    setLastSelectedId(fileId);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedFiles.size === sortedFiles.length) {
+      setSelectedFiles(new Set());
+    } else {
+      setSelectedFiles(new Set(sortedFiles.map(f => f.id)));
+    }
+  };
+
+  const handleDownloadZip = async (items: string[] | null = null) => {
+    setDownloadingZip(true);
+    
+    try {
+      const body = items ? { fileIds: items } : { fileIds: Array.from(selectedFiles) };
+      
+      const response = await fetch('/api/files/download-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+         const data = await response.json();
+         throw new Error(data.error || 'Failed to download zip');
+      }
+
+      // Trigger download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Get filename from header if possible, else default
+      const disposition = response.headers.get('Content-Disposition');
+      let filename = 'download.zip';
+      if (disposition && disposition.indexOf('attachment') !== -1) {
+          const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+          const matches = filenameRegex.exec(disposition);
+          if (matches != null && matches[1]) { 
+            filename = matches[1].replace(/['"]/g, '');
+          }
+      }
+      
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Clear selection after download? Maybe optional.
+      // setSelectedFiles(new Set()); 
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setDownloadingZip(false);
+    }
+  };
+
+  const handleDownloadFolder = async (folderId: string) => {
+     setDownloadingZip(true);
+     try {
+       const response = await fetch('/api/files/download-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId }),
+      });
+      
+      if (!response.ok) {
+         const data = await response.json();
+         throw new Error(data.error || 'Failed to download folder');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      const disposition = response.headers.get('Content-Disposition');
+      let filename = 'folder.zip';
+      if (disposition) {
+          const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+          const matches = filenameRegex.exec(disposition);
+          if (matches != null && matches[1]) { 
+            filename = matches[1].replace(/['"]/g, '');
+          }
+      }
+      
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+     } catch (err) {
+       setError(err instanceof Error ? err.message : 'Download failed');
+     } finally {
+       setDownloadingZip(false);
+     }
+  };
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -570,6 +941,13 @@ export default function HomePage() {
                   autoFocus
                 />
                 <input
+                  type="text"
+                  value={newFolderEmoji}
+                  onChange={(e) => setNewFolderEmoji(e.target.value)}
+                  placeholder="Emoji / Icon (Optional)"
+                  className="folder-input"
+                />
+                <input
                   type="password"
                   value={newFolderPassword}
                   onChange={(e) => setNewFolderPassword(e.target.value)}
@@ -609,12 +987,107 @@ export default function HomePage() {
                   className="folder-input"
                   autoFocus
                 />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                   <button 
+                     type="button" 
+                     onClick={handleForgotPassword} 
+                     disabled={sendingOtp}
+                     style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.875rem' }}
+                   >
+                     {sendingOtp ? 'Sending OTP...' : 'Forgot Password?'}
+                   </button>
+                </div>
                 <div className="modal-actions">
                   <button type="button" onClick={() => setShowPasswordModal(false)} className="cancel-btn">
                     Cancel
                   </button>
                   <button type="submit" disabled={!passwordInput} className="create-btn">
                     Unlock
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* OTP Verification Modal */}
+        {showOtpModal && (
+          <div className="modal-overlay">
+            <div className="modal">
+              <div className="modal-header">
+                <h3>Verify Identity</h3>
+                <button onClick={() => setShowOtpModal(false)} className="close-btn">×</button>
+              </div>
+              <form onSubmit={handleVerifyOtp}>
+                <p style={{marginBottom: '1rem', color: 'var(--text-secondary)'}}>
+                  An OTP has been sent to the admin email. Please enter it below.
+                </p>
+                <input
+                  type="text"
+                  value={otpInput}
+                  onChange={(e) => setOtpInput(e.target.value)}
+                  placeholder="Enter OTP"
+                  className="folder-input"
+                  autoFocus
+                />
+                <div className="modal-actions">
+                  <button type="button" onClick={() => setShowOtpModal(false)} className="cancel-btn">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={verifyingOtp || !otpInput} className="create-btn">
+                    {verifyingOtp ? 'Verifying...' : 'Verify'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Folder Modal */}
+        {showEditFolderModal && (
+          <div className="modal-overlay">
+            <div className="modal">
+              <div className="modal-header">
+                <h3>Edit Folder</h3>
+                <button onClick={() => setShowEditFolderModal(false)} className="close-btn">×</button>
+              </div>
+              <form onSubmit={handleEditSubmit}>
+                <div style={{marginBottom: '1rem'}}>
+                    <label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.9rem'}}>Folder Name</label>
+                    <input
+                      type="text"
+                      value={editFolderName}
+                      onChange={(e) => setEditFolderName(e.target.value)}
+                      placeholder="Folder Name"
+                      className="folder-input"
+                    />
+                </div>
+                <div style={{marginBottom: '1rem'}}>
+                    <label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.9rem'}}>Emoji / Icon</label>
+                    <input
+                      type="text"
+                      value={editFolderEmoji}
+                      onChange={(e) => setEditFolderEmoji(e.target.value)}
+                      placeholder="Emoji"
+                      className="folder-input"
+                    />
+                </div>
+                <div style={{marginBottom: '1rem'}}>
+                    <label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.9rem'}}>Password</label>
+                    <input
+                      type="password"
+                      value={editFolderPassword}
+                      onChange={(e) => setEditFolderPassword(e.target.value)}
+                      placeholder="New Password (leave empty to keep current)"
+                      className="folder-input"
+                    />
+                </div>
+                <div className="modal-actions">
+                  <button type="button" onClick={() => setShowEditFolderModal(false)} className="cancel-btn">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={editingFolder || !editFolderName.trim()} className="create-btn">
+                    {editingFolder ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </form>
@@ -671,6 +1144,7 @@ export default function HomePage() {
             onChange={handleFileSelect}
             className="hidden-input"
             disabled={uploading}
+            multiple
           />
           
           {uploading ? (
@@ -726,6 +1200,32 @@ export default function HomePage() {
           <div className="files-header">
             <h2>My Files</h2>
             <div className="files-actions">
+              {/* Bulk Actions */}
+              {selectedFiles.size > 0 && (
+                <div className="bulk-actions">
+                  <span className="selection-count">{selectedFiles.size} selected</span>
+                  <button 
+                    className="action-button primary"
+                    onClick={() => handleDownloadZip()}
+                    disabled={downloadingZip}
+                  >
+                    {downloadingZip ? 'Zipping...' : 'Download Zip'}
+                  </button>
+                </div>
+              )}
+              
+              {/* Select All Toggle (simplified for grid) */}
+              <div className="selection-toggle">
+                  <input 
+                    type="checkbox" 
+                    checked={files.length > 0 && selectedFiles.size === files.length}
+                    onChange={handleSelectAll}
+                    disabled={files.length === 0}
+                    title="Select All"
+                    style={{width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--accent-primary)'}}
+                  />
+              </div>
+
               {/* Sort Button */}
               <div className="sort-dropdown">
                 <button 
@@ -817,11 +1317,30 @@ export default function HomePage() {
                 <div 
                   key={file.id} 
                   className={`file-card ${file.isFolder ? 'folder-card' : ''}`}
-                  onClick={() => handleItemClick(file)}
+                  onClick={(e) => {
+                     // If clicking directly on card (background), maybe select it?
+                     // Or standard nav. Let's keep nav on click, but maybe ctrl/cmd click selects.
+                     if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                        e.preventDefault();
+                        handleSelectFile(file.id, true, e.shiftKey);
+                     } else {
+                        handleItemClick(file);
+                     }
+                  }}
                   onDoubleClick={() => handleItemDoubleClick(file)}
                 >
-                  <div className="file-card-icon">
-                    {getFileIcon(file.type, file.isFolder)}
+                  <div className="file-selection-checkbox" onClick={(e) => e.stopPropagation()}>
+                     <input 
+                       type="checkbox"
+                       checked={selectedFiles.has(file.id)}
+                       onChange={(e) => {
+                          handleSelectFile(file.id, true, false); // Explicit check is multi-select additive
+                       }}
+                       style={{width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent-primary)'}}
+                     />
+                  </div>
+                  <div className="file-card-icon" style={{marginTop: 20}}>
+                    {getFileIcon(file.type, file.isFolder, file.emoji)}
                     {file.isProtected && (
                       <div className="lock-badge">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -838,6 +1357,38 @@ export default function HomePage() {
                     </span>
                   </div>
                   <div className="file-card-actions">
+                    {file.isFolder && (
+                      <button 
+                        className="file-card-download"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditClick(file);
+                        }}
+                        title="Edit"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                    )}
+                    {file.isFolder && (
+                      <button 
+                        className="file-card-download"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadFolder(file.id);
+                        }}
+                        title="Download Folder"
+                        disabled={downloadingZip}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                           <polyline points="7,10 12,15 17,10"/>
+                           <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                      </button>
+                    )}
                     {!file.isFolder && (
                       <button 
                         className="file-card-download"
@@ -917,7 +1468,7 @@ export default function HomePage() {
                       <td>
                         <div className="file-name-cell">
                           <span className="file-icon-small">
-                            {getFileIcon(file.type, file.isFolder)}
+                            {getFileIcon(file.type, file.isFolder, file.emoji)}
                              {file.isProtected && (
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 12, height: 12, marginLeft: -8, marginTop: -8, background: 'var(--bg-card)', borderRadius: '50%', color: 'var(--accent-primary)'}}>
                                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -937,6 +1488,40 @@ export default function HomePage() {
                       <td className="file-date">{formatDate(file.uploadedAt)}</td>
                       <td className="file-action">
                         <div className="action-buttons">
+                          {file.isFolder && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditClick(file);
+                              }}
+                              className="download-button"
+                              title="Edit"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                              <span>Edit</span>
+                            </button>
+                          )}
+                          {file.isFolder && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadFolder(file.id);
+                              }}
+                              className="download-button"
+                              title="Download Zip"
+                              disabled={downloadingZip}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7,10 12,15 17,10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                              </svg>
+                              <span>Download</span>
+                            </button>
+                          )}
                           {!file.isFolder && (
                             <button
                               onClick={(e) => {

@@ -92,3 +92,19 @@ export function sanitizeFilename(filename: string): string {
     .replace(/_{2,}/g, '_')
     .substring(0, 255);
 }
+
+export async function getFileStream(key: string): Promise<ReadableStream<Uint8Array>> {
+  const url = getPublicUrl(key);
+  const response = await fetch(url);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file stream: ${response.status}`);
+  }
+  
+  if (!response.body) {
+    throw new Error('Response body is null');
+  }
+
+  return response.body;
+}
+

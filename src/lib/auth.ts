@@ -69,3 +69,21 @@ export async function getAuthFromRequest(request: NextRequest): Promise<AuthPayl
 export function getCookieName(): string {
   return COOKIE_NAME;
 }
+
+export async function createRecoveryToken(folderId: string): Promise<string> {
+  return new SignJWT({ folderId, type: 'recovery' })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('10m')
+    .sign(JWT_SECRET);
+}
+
+export async function verifyRecoveryToken(token: string): Promise<string | null> {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    if (payload.type !== 'recovery') return null;
+    return payload.folderId as string;
+  } catch {
+    return null;
+  }
+}

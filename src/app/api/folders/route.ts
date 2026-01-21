@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, parentId, password } = await request.json();
+    const { name, parentId, password, emoji } = await request.json();
 
     if (!name) {
       return NextResponse.json({ error: 'Folder name is required' }, { status: 400 });
@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
       uploadedBy: auth.username,
       parentId: parentId || null,
       isFolder: true,
-      passwordHash: password ? hashPassword(password) : undefined
+      passwordHash: password ? hashPassword(password) : undefined,
+      emoji: emoji || null,
     });
 
     await folder.save();
@@ -54,7 +55,8 @@ export async function POST(request: NextRequest) {
         name: folder.originalName,
         isFolder: true,
         parentId: folder.parentId,
-        isProtected: !!folder.passwordHash
+        isProtected: !!folder.passwordHash,
+        emoji: folder.emoji,
       }
     }, { status: 201 });
 

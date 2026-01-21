@@ -12,6 +12,9 @@ export interface IFile extends Document {
   parentId?: string | null;
   isFolder: boolean;
   passwordHash?: string;
+  emoji?: string | null;
+  recoveryOtp?: string;
+  recoveryOtpExpires?: Date;
 }
 
 const FileSchema = new Schema<IFile>(
@@ -63,6 +66,16 @@ const FileSchema = new Schema<IFile>(
     },
     passwordHash: {
       type: String,
+    },
+    emoji: {
+      type: String,
+      default: null,
+    },
+    recoveryOtp: {
+      type: String,
+    },
+    recoveryOtpExpires: {
+      type: Date,
     },
   },
   {
