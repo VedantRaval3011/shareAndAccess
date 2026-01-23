@@ -43,7 +43,7 @@ function getFileIcon(mimeType: string, isFolder: boolean = false, emoji?: string
   if (isFolder && emoji) {
     return (
       <div className="file-type-icon emoji" style={{ fontSize: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
-        {emoji}
+       {emoji}
       </div>
     );
   }
